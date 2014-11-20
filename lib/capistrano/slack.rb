@@ -18,6 +18,10 @@ module Capistrano
     def payload(announcement)
       default_payload.merge(text: announcement)
     end
+    
+    def slack_send_message(message)
+      slack_connect(payload(message))
+    end
 
     def slack_connect(payload)
       begin
@@ -101,7 +105,7 @@ module Capistrano
             slack_send_commits = fetch(:slack_send_commits, false)
             start_time = fetch(:start_time)
             elapsed = Time.now.to_i - start_time.to_i
-            msg = "#{announced_deployer} deployed #{slack_application} successfully in #{elapsed} seconds."
+            msg = "#{announced_deployer} deployed #{slack_application} successfully to #{fetch(:stage, 'production')} in #{elapsed} seconds."
             payload = payload(msg)
             if slack_send_commits && messages = commit_messages
               if messages.present?
