@@ -3,7 +3,7 @@ require 'capistrano/log_with_awesome'
 require 'json'
 require 'net/http'
 require 'active_support/all'
-# TODO need to handle loading a bit beter. these would load into the instance if it's defined
+# TODO need to handle loading a bit better. these would load into the instance if it's defined
 module Capistrano
   module Slack
     
@@ -18,7 +18,7 @@ module Capistrano
     def payload(announcement)
       default_payload.merge(text: announcement)
     end
-    
+
     def slack_send_message(message)
       slack_connect(payload(message))
     end
@@ -45,7 +45,7 @@ module Capistrano
         after 'deploy:migrations',  'slack:finished'
       end
     end
-    
+
     def commit_messages
       current, previous, branch = fetch(:current_revision), fetch(:previous_revision), fetch(:branch)
       base_rev, new_rev = branch != "master" ? ["master", branch] : [previous, current]
@@ -72,6 +72,72 @@ module Capistrano
       end
 
       messages
+    end
+
+    def product_notes
+      log_delimiter = ' alexandjuliawerehere '
+      commit_delimiter = '[END COMMIT]'
+      pm_note_token = fetch(:slack_product_updates_flag)
+
+      current, previous, branch = fetch(:current_revision), fetch(:previous_revision), fetch(:branch)
+      base_rev, new_rev = branch != "master" ? ["master", branch] : [previous, current]
+      # Show difference between master and deployed revisions.
+      diff = `git log #{base_rev}..#{new_rev}  --format="%an#{log_delimiter}%b#{commit_delimiter}"`
+      changes = diff.split(commit_delimiter).reject(&:empty?)
+
+      notes = []
+      changes.each do |change|
+        author, body = change.split(log_delimiter)
+        next unless body
+        comments = body.split("\n")
+        comment_with_note = comments.find {|comment| comment.downcase.start_with? pm_note_token.downcase}
+        next unless comment_with_note
+        note = comment_with_note.match(/#{Regexp.quote(pm_note_token)}(.*)/i)[1].strip
+        notes << "#{author}: #{note}"
+      end
+
+      notes
+    end
+
+    def messages_payload(msg, title, messages, channel=nil)
+      payload = default_payload
+      payload[:attachments] = [{
+          fields: [{
+              title: title,
+              value: messages.join("\n"),
+              short: false
+            }],
+          fallback: msg,
+          pretext: msg
+        }]
+      payload['channel'] = channel if channel
+      payload
+    end
+
+    def send_commit_messages
+      announced_deployer = fetch(:deployer)
+      slack_send_commits = fetch(:slack_send_commits, false)
+      start_time = fetch(:start_time)
+      elapsed = Time.now.to_i - start_time.to_i
+      msg = "#{announced_deployer} deployed #{slack_application} successfully to #{fetch(:stage, 'production')} in #{elapsed} seconds."
+      payload = payload(msg)
+      if slack_send_commits && messages = commit_messages
+        if message.any?
+          title = "#{messages.count} commits"
+          payload = messages_payload(msg, title, messages)
+        end
+      end
+      slack_connect(payload)
+    end
+
+    def send_product_notes
+      slack_send_commits = fetch(:slack_send_commits, false)
+      notes = product_notes
+      if slack_send_commits && notes.any?
+        msg = 'New product updates deployed!'
+        payload = messages_payload(msg, '', notes, fetch(:slack_room_product_updates))
+        slack_connect(payload)
+      end
     end
 
     def self.extended(configuration)
@@ -101,31 +167,10 @@ module Capistrano
           
           task :finished do
             return if slack_token.nil?
-            announced_deployer = fetch(:deployer)
-            slack_send_commits = fetch(:slack_send_commits, false)
-            start_time = fetch(:start_time)
-            elapsed = Time.now.to_i - start_time.to_i
-            msg = "#{announced_deployer} deployed #{slack_application} successfully to #{fetch(:stage, 'production')} in #{elapsed} seconds."
-            payload = payload(msg)
-            if slack_send_commits && messages = commit_messages
-              if messages.present?
-                payload = {}
-                payload[:attachments] = [{
-                  fields: [{
-                    title: "#{messages.count} commits",
-                    value: messages.join("\n"),
-                    short: false
-                    }],
-                  fallback: msg,
-                  pretext: msg
-                }]
-                payload.merge!(default_payload)
-              end
-            end
-            slack_connect(payload)
+            send_commit_messages
+            send_product_notes
           end
         end
-
       end
     end
   end
