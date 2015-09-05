@@ -122,7 +122,7 @@ module Capistrano
       msg = "#{announced_deployer} deployed #{slack_application} successfully to #{fetch(:stage, 'production')} in #{elapsed} seconds."
       payload = payload(msg)
       if slack_send_commits && messages = commit_messages
-        if message.any?
+        if messages.any?
           title = "#{messages.count} commits"
           payload = messages_payload(msg, title, messages)
         end
