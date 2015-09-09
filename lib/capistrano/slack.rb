@@ -131,9 +131,9 @@ module Capistrano
     end
 
     def send_product_notes
-      slack_send_commits = fetch(:slack_send_commits, false)
+      send_notes = fetch(:slack_send_commits, false) && fetch(:stage) == 'production'
       notes = product_notes
-      if slack_send_commits && notes.any?
+      if send_notes && notes.any?
         msg = 'New product updates deployed!'
         payload = messages_payload(msg, '', notes, fetch(:slack_room_product_updates))
         slack_connect(payload)
