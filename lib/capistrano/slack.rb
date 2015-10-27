@@ -3,8 +3,7 @@ require 'capistrano/log_with_awesome'
 require 'json'
 require 'net/http'
 require 'active_support/all'
-require 'pry'
-# TODO need to handle loading a bit better. these would load into the instance if it's defined
+=# TODO need to handle loading a bit better. these would load into the instance if it's defined
 module Capistrano
   module Slack
 
