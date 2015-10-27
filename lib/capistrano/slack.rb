@@ -16,7 +16,7 @@ module Capistrano
     end
 
     def current_stage
-      fetch(:stage, 'production')
+      fetch(:stage, :production)
     end
 
     def payload(announcement)
@@ -120,24 +120,22 @@ module Capistrano
 
     def send_commit_messages
       announced_deployer = fetch(:deployer)
-      slack_send_commits = fetch(:slack_send_commits, false)
       start_time = fetch(:start_time)
       elapsed = Time.now.to_i - start_time.to_i
       msg = "#{announced_deployer} deployed #{slack_application} successfully to #{current_stage} in #{elapsed} seconds."
       payload = payload(msg)
-      if slack_send_commits && messages = commit_messages
-        if messages.any?
-          title = "#{messages.count} commits"
-          payload = messages_payload(msg, title, messages)
-        end
+      messages = commit_messages
+      if messages.any?
+        title = "#{messages.count} commits"
+        payload = messages_payload(msg, title, messages)
       end
+
       slack_connect(payload)
     end
 
     def send_product_notes
-      send_notes = fetch(:slack_send_commits, false) && current_stage == 'production'
       notes = product_notes
-      if send_notes && notes.any?
+      if current_stage == :production && notes.any?
         msg = 'New product updates deployed!'
         payload = messages_payload(msg, '', notes, fetch(:slack_room_product_updates))
         slack_connect(payload)
@@ -171,8 +169,11 @@ module Capistrano
 
           task :finished do
             return if slack_token.nil?
-            send_commit_messages
-            send_product_notes
+
+            if fetch(:slack_send_commits, false)
+              send_commit_messages
+              send_product_notes
+            end
           end
         end
       end
