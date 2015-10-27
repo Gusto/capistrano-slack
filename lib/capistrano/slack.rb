@@ -6,15 +6,19 @@ require 'active_support/all'
 # TODO need to handle loading a bit better. these would load into the instance if it's defined
 module Capistrano
   module Slack
-    
+
     def default_payload
       {
         'channel' => fetch(:slack_room),
-        'username' => fetch(:slack_username, ''), 
-        'icon_emoji' => fetch(:slack_emoji, '') 
+        'username' => fetch(:slack_username, ''),
+        'icon_emoji' => fetch(:slack_emoji, '')
       }
     end
-  
+
+    def current_stage
+      fetch(:stage, 'production')
+    end
+
     def payload(announcement)
       default_payload.merge(text: announcement)
     end
@@ -31,13 +35,13 @@ module Capistrano
         http.verify_mode = OpenSSL::SSL::VERIFY_PEER
         request = Net::HTTP::Post.new(uri.request_uri)
         request.set_form_data(:payload => payload.to_json)
-        http.request(request) 
-      rescue SocketError => e 
+        http.request(request)
+      rescue SocketError => e
          puts "#{e.message} or slack may be down"
        end
     end
-    
-    def slack_defaults 
+
+    def slack_defaults
       if fetch(:slack_deploy_defaults, true) == true
         before 'deploy', 'slack:starting'
         before 'deploy:migrations', 'slack:starting'
@@ -52,7 +56,7 @@ module Capistrano
       # Show difference between master and deployed revisions.
       diff = `git log #{base_rev}..#{new_rev}  --format="%h,%an,%ai,%f"`
       messages = diff.split("\n")
-      
+
       repo = fetch(:repository, "")
       repo_url = nil
       if m = repo.match(/git@github.com:([^\/]+)\/([^(\.git)]+).git/)
@@ -60,7 +64,7 @@ module Capistrano
         git_repo = m.to_a[2]
         repo_url = "https://github.com/#{git_org}/#{git_repo}"
       end
-      
+
       messages.map! do |message|
         sha, author, date, subject = message.split(",")
         link = sha
@@ -119,7 +123,7 @@ module Capistrano
       slack_send_commits = fetch(:slack_send_commits, false)
       start_time = fetch(:start_time)
       elapsed = Time.now.to_i - start_time.to_i
-      msg = "#{announced_deployer} deployed #{slack_application} successfully to #{fetch(:stage, 'production')} in #{elapsed} seconds."
+      msg = "#{announced_deployer} deployed #{slack_application} successfully to #{current_stage} in #{elapsed} seconds."
       payload = payload(msg)
       if slack_send_commits && messages = commit_messages
         if messages.any?
@@ -131,7 +135,7 @@ module Capistrano
     end
 
     def send_product_notes
-      send_notes = fetch(:slack_send_commits, false) && fetch(:stage) == 'production'
+      send_notes = fetch(:slack_send_commits, false) && current_stage == 'production'
       notes = product_notes
       if send_notes && notes.any?
         msg = 'New product updates deployed!'
@@ -143,7 +147,7 @@ module Capistrano
     def self.extended(configuration)
       configuration.load do
 
-        before('deploy') do 
+        before('deploy') do
           slack_defaults
         end
 
@@ -156,15 +160,15 @@ module Capistrano
             return if slack_token.nil?
             announced_deployer = ActiveSupport::Multibyte::Chars.new(fetch(:deployer)).mb_chars.normalize(:kd).gsub(/[^\x00-\x7F]/,'').to_s
             msg = if fetch(:branch, nil)
-              "#{announced_deployer} is deploying #{slack_application}'s #{branch} to #{fetch(:stage, 'production')}"
+              "#{announced_deployer} is deploying #{slack_application}'s #{branch} to #{current_stage}"
             else
-              "#{announced_deployer} is deploying #{slack_application} to #{fetch(:stage, 'production')}"
+              "#{announced_deployer} is deploying #{slack_application} to #{current_stage}"
             end
 
-            slack_connect(payload(msg))  
+            slack_connect(payload(msg))
             set(:start_time, Time.now)
           end
-          
+
           task :finished do
             return if slack_token.nil?
             send_commit_messages
@@ -179,4 +183,4 @@ end
 if Capistrano::Configuration.instance
   Capistrano::Configuration.instance.extend(Capistrano::Slack)
 end
-  
+
